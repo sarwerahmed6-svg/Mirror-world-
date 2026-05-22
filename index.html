@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Binary Land: Mirror Maze</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#000;color:#0f0;font-family:'Courier New',monospace;height:100vh;width:100vw;overflow:hidden}
+        #container{width:100%;height:100%;display:flex;justify-content:center;align-items:center}
+        .screen{display:none;flex-direction:column;align-items:center;justify-content:center;gap:15px;width:100%;height:100%;padding:20px}
+        .screen.active{display:flex}
+        h1{font-size:2.2rem;text-shadow:0 0 15px #0f0;margin-bottom:5px}
+        h2{font-size:1.8rem;text-shadow:0 0 10px #0f0}
+        .subtitle{color:#666;font-size:1rem;margin-bottom:25px}
+        button{padding:12px 35px;font-size:1rem;background:transparent;border:2px solid #0f0;color:#0f0;cursor:pointer;font-family:inherit;text-transform:uppercase;transition:all 0.3s;min-width:220px}
+        button:hover{background:#0f0;color:#000}
+        #hud{position:fixed;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;font-size:1rem;z-index:100;pointer-events:none}
+        canvas{border:2px solid #0f0;max-width:90vw;max-height:50vh;background:#0a0a0a;display:block}
+        #mobile-controls{display:flex;flex-direction:column;align-items:center;gap:5px;margin-top:10px}
+        #mobile-controls button{min-width:55px;padding:12px;font-size:1.3rem;touch-action:manipulation}
+        .pause-btn{position:fixed;top:10px;right:10px;min-width:auto;padding:8px 12px;z-index:100}
+        #editor-tools{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:10px}
+        .tool-btn{min-width:auto;padding:8px 15px;font-size:0.85rem}
+        .tool-btn.active{background:#0f0;color:#000}
+        #editor-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px}
+        #level-code{width:90%;max-width:350px;background:#111;border:1px solid #0f0;color:#0f0;padding:8px;font-family:inherit;font-size:0.85rem;resize:none;margin-top:10px}
+        .instructions{text-align:left;max-width:350px;line-height:1.6;font-size:0.95rem;color:#ccc}
+        .instructions strong{color:#0f0}
+        #pause-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);display:none;flex-direction:column;align-items:center;justify-content:center;gap:15px;z-index:200}
+        #pause-overlay.active{display:flex}
+        @media(min-width:768px){#mobile-controls{display:none}canvas{max-height:60vh}}
+    </style>
+</head>
+<body>
+    <div id="container">
+        <!-- Menu -->
+        <div id="menu-screen" class="screen active">
+            <h1>BINARY LAND</h1>
+            <p class="subtitle">Mirror Maze Edition</p>
+            <button onclick="showScreen('game');startGame()">START GAME</button>
+            <button onclick="showScreen('editor');startEditor()">CUSTOM LEVEL</button>
+            <button onclick="showScreen('howto')">HOW TO PLAY</button>
+        </div>
+
+        <!-- Game -->
+        <div id="game-screen" class="screen">
+            <div id="hud"><span id="score">Score: 0</span><span id="lives">Lives: 3</span><span id="level">Level: 1</span></div>
+            <canvas id="game-canvas"></canvas>
+            <div id="mobile-controls">
+                <button onclick="movePlayers('up')">↑</button>
+                <div><button onclick="movePlayers('left')">←</button><button onclick="movePlayers('down')">↓</button><button onclick="movePlayers('right')">→</button></div>
+            </div>
+            <button onclick="togglePause()" class="pause-btn">⏸</button>
+            <div id="pause-overlay">
+                <h2>PAUSED</h2>
+                <button onclick="togglePause()">RESUME</button>
+                <button onclick="showScreen('menu');stopGame()">QUIT</button>
+            </div>
+        </div>
+
+        <!-- Game Over -->
+        <div id="gameover-screen" class="screen">
+            <h2>GAME OVER</h2>
+            <p id="final-score">Score: 0</p>
+            <button onclick="restartLevel1()">RESTART LEVEL 1</button>
+            <button onclick="continueHere()">CONTINUE HERE</button>
+            <button onclick="showScreen('menu');stopGame()">MAIN MENU</button>
+        </div>
+
+        <!-- Editor -->
+        <div id="editor-screen" class="screen">
+            <h2>LEVEL EDITOR</h2>
+            <div id="editor-tools">
+                <button onclick="setTool('wall')" class="tool-btn active" id="tool-wall">Wall</button>
+                <button onclick="setTool('enemy')" class="tool-btn" id="tool-enemy">Enemy (0/5)</button>
+                <button onclick="setTool('trap')" class="tool-btn" id="tool-trap">Trap (0/10)</button>
+                <button onclick="setTool('erase')" class="tool-btn" id="tool-erase">Erase</button>
+            </div>
+            <canvas id="editor-canvas"></canvas>
+            <div id="editor-actions">
+                <button onclick="testLevel()">TEST PLAY</button>
+                <button onclick="saveLevel()">SAVE CODE</button>
+                <button onclick="loadLevel()">LOAD CODE</button>
+                <button onclick="showScreen('menu')">BACK</button>
+            </div>
+            <textarea id="level-code" placeholder="Paste level code here..." rows="2"></textarea>
+        </div>
+
+        <!-- How To -->
+        <div id="howto-screen" class="screen">
+            <h2>HOW TO PLAY</h2>
+            <div class="instructions">
+                <p><strong>MIRROR MOVEMENT:</strong></p>
+                <p>• Left/Right = OPPOSITE directions</p>
+                <p>• Up/Down = SAME directions</p>
+                <p><strong>GOAL:</strong> Both reach ♥ together</p>
+                <p><strong>ENEMIES:</strong> Touch = Death (3 lives)</p>
+                <p><strong>TRAPS:</strong> Freeze 2 seconds</p>
+                <p><strong>DOTS:</strong> Optional, +1 score</p>
+                <p><strong>CONTROLS:</strong> Arrow keys / WASD / Buttons</p>
+            </div>
+            <button onclick="showScreen('menu')">BACK</button>
+        </div>
+    </div>
+
+    <script>
+        // Constants
+        const GRID = 20;
+        const P1_START = [18, 18];
+        const P2_START = [1, 18];
+        const HEART_POS = [10, 1];
+        const PLAYER_SPEED = 1; // Grid cells per move
+        const ENEMY_SPEED = 0.08; // Slower than player
+
+        // Global variables
+        let canvas, ctx;
+        let editorCanvas, editorCtx;
+        let cellSize = 25;
+        let gameRunning = false;
+        let gamePaused = false;
+        let animFrame = 0;
+        let isCustomLevel = false;
+
+        // Game state
+        let players = [
+            {x: 18, y: 18, frozen: false, freezeTimer: 0, atHeart: false},
+            {x: 1, y: 18, frozen: false, freezeTimer: 0, atHeart: false}
+        ];
+        let enemies = [];
+        let walls = new Set();
+        let traps = new Set();
+        let dots = new Set();
+        let score = 0;
+        let lives = 3;
+        let currentLevel = 1;
+
+        // Editor state
+        let editorWalls = new Set();
+        let editorEnemies = [];
+        let editorTraps = [];
+        let currentTool = 'wall';
+
+        // Screen management
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId + '-screen').classList.add('active');
+        }
+
+        // Setup canvas
+        function setupCanvas() {
+            canvas = document.getElementById('game-canvas');
+            ctx = canvas.getContext('2d');
+            let size = Math.min(window.innerWidth - 20, window.innerHeight * 0.5);
+            canvas.width = size;
+            canvas.height = size;
+            cellSize = size / GRID;
+        }
+
+        function setupEditorCanvas() {
+            editorCanvas = document.getElementById('editor-canvas');
+            editorCtx = editorCanvas.getContext('2d');
+            let size = Math.min(window.innerWidth - 20, window.innerHeight * 0.4);
+            editorCanvas.width = size;
+            editorCanvas.height = size;
+            cellSize = size / GRID;
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', function(e) {
+            if (!gameRunning || gamePaused) return;
+            const keyMap = {
+                'ArrowRight': 'right', 'd': 'right', 'D': 'right',
+                'ArrowLeft': 'left', 'a': 'left', 'A': 'left',
+                'ArrowUp': 'up', 'w': 'up', 'W': 'up',
+                'ArrowDown': 'down', 's': 'down', 'S': 'down'
+            };
+            if (keyMap[e.key]) {
+                e.preventDefault();
+                movePlayers(keyMap[e.key]);
+            }
+        });
+
+        // Start game
+        function startGame(levelData) {
+            setupCanvas();
+            resetGame(levelData);
+            gameRunning = true;
+            gamePaused = false;
+            gameLoop();
+        }
+
+        function stopGame() {
+            gameRunning = false;
+            cancelAnimationFrame(animFrame);
+        }
+
+        function resetGame(levelData) {
+            walls.clear();
+            traps.clear();
+            dots.clear();
+            enemies = [];
+            
+            if (levelData) {
+                isCustomLevel = true;
+                loadCustomLevel(levelData);
+            } else {
+                isCustomLevel = false;
+                loadBuiltinLevel(currentLevel);
+            }
+            
+            resetPlayers();
+            updateHUD();
+        }
+
+        // Load builtin levels
+        function loadBuiltinLevel(level) {
+            // Border walls
+            for (let i = 0; i < GRID; i++) {
+                walls.add(`${i},0`);
+                walls.add(`${i},${GRID - 1}`);
+                walls.add(`0,${i}`);
+                walls.add(`${GRID - 1},${i}`);
+            }
+
+            if (level === 1) {
+                for (let i = 3; i < 17; i++) walls.add(`${i},5`);
+                for (let i = 8; i < 15; i++) walls.add(`10,${i}`);
+                enemies.push({x: 10, y: 10, type: 'chaser', speed: ENEMY_SPEED});
+            } else if (level === 2) {
+                for (let i = 2; i < 10; i++) walls.add(`${i},7`);
+                for (let i = 11; i < 18; i++) walls.add(`${i},12`);
+                for (let i = 3; i < 10; i++) walls.add(`5,${i}`);
+                enemies.push({x: 15, y: 5, type: 'chaser', speed: ENEMY_SPEED});
+                enemies.push({x: 5, y: 15, type: 'patrol', speed: ENEMY_SPEED, patrolIndex: 0, patrolPoints: [[5, 15], [15, 15]]});
+            } else {
+                for (let i = 4; i < 16; i++) {
+                    walls.add(`${i},4`);
+                    walls.add(`${i},15`);
+                }
+                walls.add(`8,6`);
+                walls.add(`8,7`);
+                walls.add(`8,8`);
+                enemies.push({x: 12, y: 8, type: 'chaser', speed: ENEMY_SPEED});
+            }
+            generateDots();
+        }
+
+        function loadCustomLevel(data) {
+            data.walls.forEach(([x, y]) => walls.add(`${x},${y}`));
+            data.traps.forEach(([x, y]) => traps.add(`${x},${y}`));
+            data.enemies.forEach(e => {
+                enemies.push({
+                    x: e.pos[0], 
+                    y: e.pos[1], 
+                    type: 'chaser', 
+                    speed: ENEMY_SPEED
+                });
+            });
+            generateDots();
+        }
+
+        function generateDots() {
+            for (let x = 1; x < GRID - 1; x++) {
+                for (let y = 1; y < GRID - 1; y++) {
+                    let key = `${x},${y}`;
+                    if (!walls.has(key) && 
+                        !(x === HEART_POS[0] && y === HEART_POS[1]) &&
+                        !(x === P1_START[0] && y === P1_START[1]) &&
+                        !(x === P2_START[0] && y === P2_START[1])) {
+                        dots.add(key);
+                    }
+                }
+            }
+        }
+
+        function resetPlayers() {
+            players[0].x = P1_START[0];
+            players[0].y = P1_START[1];
+            players[0].frozen = false;
+            players[0].freezeTimer = 0;
+            players[0].atHeart = false;
+
+            players[1].x = P2_START[0];
+            players[1].y = P2_START[1];
+            players[1].frozen = false;
+            players[1].freezeTimer = 0;
+            players[1].atHeart = false;
+        }
+
+        // Move players with mirror logic
+        function movePlayers(direction) {
+            if (!gameRunning || gamePaused) return;
+
+            let p1 = players[0];
+            let p2 = players[1];
+            let dx1 = 0, dy1 = 0, dx2 = 0, dy2 = 0;
+
+            if (direction === 'right') {
+                dx1 = 1; dx2 = -1;
+            } else if (direction === 'left') {
+                dx1 = -1; dx2 = 1;
+            } else if (direction === 'up') {
+                dy1 = -1; dy2 = -1;
+            } else if (direction === 'down') {
+                dy1 = 1; dy2 = 1;
+            }
+
+            if (!p1.frozen) tryMove(p1, dx1, dy1);
+            if (!p2.frozen) tryMove(p2, dx2, dy2);
+
+            checkCollisions();
+        }
+
+        function tryMove(player, dx, dy) {
+            let newX = player.x + dx;
+            let newY = player.y + dy;
+
+            if (newX < 0 || newX >= GRID || newY < 0 || newY >= GRID) return;
+            if (walls.has(`${newX},${newY}`)) return;
+
+            player.x = newX;
+            player.y = newY;
+        }
+
+        function checkCollisions() {
+            // Check dots
+            players.forEach(p => {
+                let key = `${p.x},${p.y}`;
+                if (dots.has(key)) {
+                    dots.delete(key);
+                    score++;
+                    updateHUD();
+                }
+            });
+
+            // Check traps
+            players.forEach(p => {
+                let key = `${p.x},${p.y}`;
+                if (traps.has(key) && !p.frozen) {
+                    p.frozen = true;
+                    p.freezeTimer = 2000; // 2 seconds
+                }
+            });
+
+            // Check heart
+            let heartKey = `${HEART_POS[0]},${HEART_POS[1]}`;
+            players[0].atHeart = (`${players[0].x},${players[0].y}` === heartKey);
+            players[1].atHeart = (`${players[1].x},${players[1].y}` === heartKey);
+
+            if (players[0].atHeart && players[1].atHeart) {
+                levelComplete();
+            }
+        }
+
+        function updateEnemies() {
+            enemies.forEach(enemy => {
+                if (enemy.type === 'chaser') {
+                    let target = players[0];
+                    enemy.x += Math.sign(target.x - enemy.x) * enemy.speed;
+                    enemy.y += Math.sign(target.y - enemy.y) * enemy.speed;
+                } else if (enemy.type === 'patrol' && enemy.patrolPoints) {
+                    let target = enemy.patrolPoints[enemy.patrolIndex];
+                    enemy.x += Math.sign(target[0] - enemy.x) * enemy.speed;
+                    enemy.y += Math.sign(target[1] - enemy.y) * enemy.speed;
+                    if (Math.abs(enemy.x - target[0]) < 0.5 && Math.abs(enemy.y - target[1]) < 0.5) {
+                        enemy.patrolIndex = (enemy.patrolIndex + 1) % enemy.patrolPoints.length;
+                    }
+                }
+
+                // Check collision with players
+                players.forEach(p => {
+                    let dist = Math.hypot(p.x - enemy.x, p.y - enemy.y);
+                    if (dist < 0.8) {
+                        loseLife();
+                    }
+                });
+            });
+        }
+
+        function loseLife() {
+            lives--;
+            updateHUD();
+
+            if (lives <= 0) {
+                gameOver();
+            } else {
+                resetPlayers();
+            }
+        }
+
+        function levelComplete() {
+            gameRunning = false;
+            cancelAnimationFrame(animFrame);
+
+            setTimeout(() => {
+                if (isCustomLevel) {
+                    alert('Level Complete! Score: ' + score);
+                    showScreen('menu');
+                } else {
+                    currentLevel++;
+                    if (currentLevel > 10) {
+                        alert('All Levels Complete! Final Score: ' + score);
+                        currentLevel = 1;
+                        showScreen('menu');
+                    } else {
+                        alert('Level ' + (currentLevel - 1) + ' Complete!');
+                        startGame();
+                    }
+                }
+            }, 500);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animFrame);
+            document.getElementById('final-score').textContent = 'Score: ' + score;
+            showScreen('gameover');
+        }
+
+        function togglePause() {
+            gamePaused = !gamePaused;
+            let overlay = document.getElementById('pause-overlay');
+            if (gamePaused) {
+                overlay.classList.add('active');
+            } else {
+                overlay.classList.remove('active');
+                if (gameRunning) gameLoop();
+            }
+        }
+
+        function restartLevel1() {
+            score = 0;
+            lives = 3;
+            currentLevel = 1;
+            showScreen('game');
+            startGame();
+        }
+
+        function continueHere() {
+            lives = 3;
+            updateHUD();
+            gameRunning = true;
+            gamePaused = false;
+            showScreen('game');
+            gameLoop();
+        }
+
+        function updateHUD() {
+            document.getElementById('score').textContent = 'Score: ' + score;
+            document.getElementById('lives').textContent = 'Lives: ' + lives;
+            document.getElementById('level').textContent = 'Level: ' + currentLevel;
+        }
+
+        // Editor functions
+        function startEditor() {
+            setupEditorCanvas();
+            editorWalls.clear();
+            editorEnemies = [];
+            editorTraps = [];
+            currentTool = 'wall';
+            updateEditorUI();
+            renderEditor();
+            
+            editorCanvas.onclick = function(e) {
+                let rect = editorCanvas.getBoundingClientRect();
+                let x = Math.floor((e.clientX - rect.left) / cellSize);
+                let y = Math.floor((e.clientY - rect.top) / cellSize);
+
+                if ((x === P1_START[0] && y === P1_START[1]) ||
+                    (x === P2_START[0] && y === P2_START[1]) ||
+                    (x === HEART_POS[0] && y === HEART_POS[1]) ||
+                    x < 0 || x >= GRID || y < 0 || y >= GRID) return;
+
+                let key = `${x},${y}`;
+
+                if (currentTool === 'wall') {
+                    editorWalls.has(key) ? editorWalls.delete(key) : editorWalls.add(key);
+                } else if (currentTool === 'enemy' && editorEnemies.length < 5 && !editorWalls.has(key)) {
+                    editorEnemies.push([x, y]);
+                } else if (currentTool === 'trap' && editorTraps.length < 10 && !editorWalls.has(key)) {
+                    editorTraps.push([x, y]);
+                } else if (currentTool === 'erase') {
+                    editorWalls.delete(key);
+                    editorEnemies = editorEnemies.filter(([ex, ey]) => ex !== x || ey !== y);
+                    editorTraps = editorTraps.filter(([tx, ty]) => tx !== x || ty !== y);
+                }
+
+                updateEditorUI();
+                renderEditor();
+            };
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('tool-' + tool).classList.add('active');
+        }
+
+        function updateEditorUI() {
+            document.getElementById('tool-enemy').textContent = 'Enemy (' + editorEnemies.le
